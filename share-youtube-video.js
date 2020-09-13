@@ -38,7 +38,8 @@ puppeteer.launch({ headless: false, product: 'chrome', userDataDir: dataDir}).th
 
   await page.setBypassCSP(true);
 
-  let usersToNames = await getNamesFromContactList(page, log, [...USERS_TO_SHARE_ARRAY, ...USERS_TO_REMOVE_ARRAY], URL_GOOGLE_CONTACTS);
+  const ALL_EMAILS = [...USERS_TO_SHARE_ARRAY, ...USERS_TO_REMOVE]
+  let usersToNames = await getNamesFromContactList(page, log, ALL_EMAILS, URL_GOOGLE_CONTACTS);
 
   await page.goto(URL_YOUTUBE_STUDIO_VIDEO);
 
@@ -89,8 +90,8 @@ puppeteer.launch({ headless: false, product: 'chrome', userDataDir: dataDir}).th
   await openSharingVideoWindow(browser, page, log, URL_YOUTUBE_STUDIO_VIDEO);
   await page.waitForSelector('div.acl-target-list-inner-container');
 
-  for (let i = 0; i < USERS_TO_SHARE_ARRAY.length; i++) {
-    let email = USERS_TO_SHARE_ARRAY[i];
+  for (let i = 0; i < ALL_EMAILS.length; i++) {
+    let email = ALL_EMAILS[i];
     const checkString = usersToNames[email] || email;
     try {
       await page.waitForSelector(`div[title="${checkString}"]`, { timeout: 300 });
