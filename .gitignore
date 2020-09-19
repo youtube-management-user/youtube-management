@@ -13,4 +13,5 @@ public
 _redirects
 config.js*
 tmp
+debug
 *.log

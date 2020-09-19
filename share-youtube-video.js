@@ -1,15 +1,13 @@
-const fs = require('fs');
+const puppeteer = require('puppeteer-extra');
 const path = require('path');
 
-const puppeteer = require('puppeteer-extra');
-
 const libs = require('./libs');
-const { openSharingVideoWindow, authorize, getNamesFromContactList } = libs;
+const { openSharingVideoWindow, authorize, getNamesFromContactList, checkFolder } = libs;
 
 const log = require('simple-node-logger').createSimpleFileLogger('project.log');
 
 const config = require('./config.js');
-const { URL_GOOGLE_ACCOUNTS, URL_YOUTUBE_STUDIO_VIDEO, URL_GOOGLE_CONTACTS, GOOGLE_USER, GOOGLE_PASSWORD, USERS_TO_SHARE, USERS_TO_REMOVE } = config;
+const { URL_GOOGLE_ACCOUNTS, URL_YOUTUBE_STUDIO_VIDEO, URL_GOOGLE_CONTACTS, GOOGLE_USER, GOOGLE_PASSWORD, USERS_TO_SHARE, USERS_TO_REMOVE, LOGGING_MODE } = config;
 
 const USERS_TO_SHARE_ARRAY  = USERS_TO_SHARE.split(',');
 const USERS_TO_REMOVE_ARRAY = USERS_TO_REMOVE.split(',');
@@ -17,16 +15,13 @@ const USERS_TO_REMOVE_ARRAY = USERS_TO_REMOVE.split(',');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteer.use(StealthPlugin());
 
+checkFolder(path.resolve(__dirname, 'tmp'), log);
+
+if (LOGGING_MODE == 'full') {
+  checkFolder(path.resolve(__dirname, 'debug'), log);
+}
+
 const dataDir = path.resolve(__dirname, 'tmp');
-
-fs.access(dataDir, fs.constants.W_OK, function(err) {
-  if(err){
-    log.error(`Can't write in the folder ${dataDir}, please make sure script has access rights`);
-    process.exit(1);
-  }
-});
-
-log.info(`Using folder ${dataDir}`);
 
 puppeteer.launch({ headless: false, product: 'chrome', userDataDir: dataDir}).then(async browser => {
 
@@ -39,7 +34,7 @@ puppeteer.launch({ headless: false, product: 'chrome', userDataDir: dataDir}).th
   await page.setBypassCSP(true);
 
   const ALL_EMAILS = [...USERS_TO_SHARE_ARRAY, ...USERS_TO_REMOVE_ARRAY];
-  let usersToNames = await getNamesFromContactList(page, log, ALL_EMAILS, URL_GOOGLE_CONTACTS);
+  let usersToNames = await getNamesFromContactList(page, log, ALL_EMAILS, URL_GOOGLE_CONTACTS, LOGGING_MODE);
 
   await page.goto(URL_YOUTUBE_STUDIO_VIDEO);
 

@@ -47,7 +47,8 @@ async function authorize (page, log, GOOGLE_USER, GOOGLE_PASSWORD) {
   await page.waitFor(1000);
 }
 
-async function getNamesFromContactList (page, log, emails, URL_GOOGLE_CONTACTS) {
+async function getNamesFromContactList (page, log, emails, URL_GOOGLE_CONTACTS, LOGGING_MODE) {
+  const fs = require('fs');
   let result = {};
 
   for (let i = 0; i < emails.length; i++) {
@@ -56,9 +57,16 @@ async function getNamesFromContactList (page, log, emails, URL_GOOGLE_CONTACTS) 
     if (email!=='') {
       await page.goto(URL_GOOGLE_CONTACTS + email);
       await page.waitFor(1000);
+
+      if (LOGGING_MODE == 'full') {
+        await page.screenshot({ path: `debug/${email}.contacts.png`});
+        let html = await page.content();
+        fs.writeFileSync(`debug/${email}.html`, html);
+      }
+
       log.info('Opening contacts for ' + email);
       try {
-         emailName = await page.$eval(`span[role="button"]`, el => el.innerText);
+        emailName = await page.$eval(`span[role="button"]`, el => el.innerText);
       }
       catch(ex) { }
       if (emailName) {
@@ -66,11 +74,25 @@ async function getNamesFromContactList (page, log, emails, URL_GOOGLE_CONTACTS) 
         log.info(`There is a name ${emailName} for the ${email}`);
       } else {
         log.info(`There is no name for the ${email}`);
-      }      
+      }
     }
   }
 
   return result;
 }
 
-module.exports = { openSharingVideoWindow, authorize, getNamesFromContactList }
+function checkFolder(folder, log) {
+
+  const fs = require('fs');
+
+  fs.access(folder, fs.constants.W_OK, function(err) {
+    if (err) {
+      log.error(`Can't write in the folder ${folder}, please make sure script has access rights`);
+      process.exit(1);
+    }
+  });
+
+  log.info(`Using folder ${folder}`);
+}
+
+module.exports = { openSharingVideoWindow, authorize, getNamesFromContactList, checkFolder }
