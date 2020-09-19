@@ -23,7 +23,7 @@ if (LOGGING_MODE == 'full') {
 
 const dataDir = path.resolve(__dirname, 'tmp');
 
-puppeteer.launch({ headless: false, product: 'chrome', userDataDir: dataDir}).then(async browser => {
+puppeteer.launch({ headless: true, product: 'chrome', userDataDir: dataDir}).then(async browser => {
 
   const page = await browser.newPage();
 
