@@ -1,12 +1,6 @@
-async function openSharingVideoWindow (browser, page, log, URL_YOUTUBE_STUDIO_VIDEO) {
-  await page.goto(URL_YOUTUBE_STUDIO_VIDEO);
-  await page.waitFor(1000);
+async function openSharingVideoWindow (browser, page, log) {
 
-  log.info('Open studio')
-
-  url = await page.url();
-
-  log.info('Curently on page ' + url);
+  let sharingWindowUrl;
 
   await page.waitForSelector('ytcp-icon-button[id="overflow-menu-button"]');
   await page.click('ytcp-icon-button[id="overflow-menu-button"]');
@@ -19,12 +13,16 @@ async function openSharingVideoWindow (browser, page, log, URL_YOUTUBE_STUDIO_VI
   const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
   const popup = await newPagePromise;
 
-  url = await popup.url();
-  log.info('Currently on page ', url);
-
-  await page.goto(url);
+  sharingWindowUrl = await popup.url();
+  // log.info('Currently on page ', url);
+  //
+  await page.goto(sharingWindowUrl);
+  await page.waitFor(1000);
   await page.bringToFront();
   await page.waitFor(1000);
+
+  return sharingWindowUrl;
+
 }
 
 async function authorize (page, log, GOOGLE_USER, GOOGLE_PASSWORD) {
@@ -81,6 +79,152 @@ async function getNamesFromContactList (page, log, emails, URL_GOOGLE_CONTACTS, 
   return result;
 }
 
+async function getNamesUsingTestVideo (browser, page, log, emails, videoUrl, sharingWindowUrl) {
+  let result = {};
+
+  for (let i = 0; i < emails.length; i++) {
+    let email = emails[i];
+    let emailName;
+    if (email!=='') {
+
+      await changeVideoSharingSettings(browser, page, log, sharingWindowUrl, [emails[i]], [], true, {});
+
+      await page.goto(sharingWindowUrl);
+
+      log.info('Opening test video for ' + email);
+      try {
+        emailName = await page.$eval('div.acl-target-item', el => el.innerText);
+      }
+      catch(ex) { }
+      if (emailName) {
+        result[email] = emailName;
+        log.info(`There is a name ${emailName} for the ${email}`);
+      } else {
+        log.info(`There is no name for the ${email}`);
+      }
+    }
+  }
+
+  return result;
+}
+
+async function changeVideoSharingSettings (browser, page, log, sharingWindowUrl, emailsToShare, emailsToRemove, removeAllBeforeAdd, usersToNames, SHARE_ONLY_WITH_LISTED) {
+
+  if (!sharingWindowUrl || sharingWindowUrl.indexOf('http') < 0) {
+    log.error('Cannot proceed, there is no sharing popup URL');
+    return;
+  }
+
+  await page.goto(sharingWindowUrl);
+
+  log.info('Opening video sharing page');
+
+  await page.waitForSelector('textarea.metadata-share-contacts');
+
+  if (removeAllBeforeAdd === true || SHARE_ONLY_WITH_LISTED === 'YES') {
+    log.info('Removing all users');
+    const elements = await page.$x('//span[@class="yt-uix-button-content" and text()="Remove all"]')
+    if (elements && elements[0]) {
+      await elements[0].click();
+    }
+  }
+
+  log.info(`Typing in user emails (${emailsToShare.length})...`);
+
+  for (let i = 0; i < emailsToShare.length; i++) {
+    await page.type('textarea.metadata-share-contacts', emailsToShare[i] + ',', { delay: 20 });
+  }
+
+  log.info(`Removing users (${emailsToRemove.length})...`);
+
+  for (let i = 0; i < emailsToRemove.length; i++) {
+    const email = emailsToRemove[i];
+    const checkString = usersToNames[email] || email;
+
+    try {
+      await page.click(`button[aria-label^="Delete ${checkString}"]`);
+      log.info(`User ${checkString} was successfully removed`);
+    }
+    catch (ex) {
+      log.info(`No user ${checkString} to remove`);
+    }
+  }
+
+  await page.waitFor(600);
+
+  await page.click('button.sharing-dialog-ok');
+  await page.waitFor(3000);
+
+  log.info('Video sharing properties were changed');
+
+}
+
+async function checkVideoSharingProperties(browser, page, log, sharingWindowUrl, ALL_EMAILS, usersToNames) {
+
+  if (!sharingWindowUrl || sharingWindowUrl.indexOf('http') < 0) {
+    log.error('Cannot proceed, there is no sharing popup URL');
+    return;
+  }
+
+  await page.goto(sharingWindowUrl);
+
+  log.info('Opening video sharing page');
+
+  await page.waitFor(3000);
+
+  try {
+    await page.waitForSelector('div.acl-target-list-inner-container', { timeout: 3000 });
+  } catch(ex) {
+    log.error(`Cannot open video sharing page`);
+  }
+
+  for (let i = 0; i < ALL_EMAILS.length; i++) {
+    let email = ALL_EMAILS[i];
+    const checkString = usersToNames[email] || email;
+    try {
+      await page.waitForSelector(`div[title="${checkString}"]`, { timeout: 300 });
+      log.info(`Video is shared with ${checkString} <${email}>`);
+    }
+    catch (ex) {
+      log.info(`Video is not shared with ${checkString} <${email}>`);
+    }
+  };
+
+}
+
+async function getSharingWindowUrl (browser, page, log, videoUrl) {
+
+  let sharingWindowUrl = '';
+
+  await page.goto(videoUrl);
+
+  log.info(`Currently on page ${videoUrl}`);
+
+  await page.waitForSelector('ytcp-icon-button[id="overflow-menu-button"]');
+  await page.click('ytcp-icon-button[id="overflow-menu-button"]');
+  await page.waitFor(300);
+
+  const elements = await page.$x('//yt-formatted-string[text()="Share privately"]')
+
+  const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
+
+  await elements[0].click();
+
+  await page.waitFor(3000);
+
+  const popup = await newPagePromise;
+
+  sharingWindowUrl = await popup.url();
+
+  //
+  // await page.goto(sharingWindowUrl);
+  // await page.waitFor(1000);
+  // await page.bringToFront();
+
+  return sharingWindowUrl;
+
+}
+
 function checkFolder(folder, log) {
 
   const fs = require('fs');
@@ -95,4 +239,4 @@ function checkFolder(folder, log) {
   log.info(`Using folder ${folder}`);
 }
 
-module.exports = { openSharingVideoWindow, authorize, getNamesFromContactList, checkFolder }
+module.exports = { openSharingVideoWindow, authorize, getNamesFromContactList, checkFolder, getNamesUsingTestVideo, getSharingWindowUrl, changeVideoSharingSettings, checkVideoSharingProperties }

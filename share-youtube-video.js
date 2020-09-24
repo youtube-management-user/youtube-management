@@ -2,15 +2,15 @@ const puppeteer = require('puppeteer-extra');
 const path = require('path');
 
 const libs = require('./libs');
-const { openSharingVideoWindow, authorize, getNamesFromContactList, checkFolder } = libs;
+const { openSharingVideoWindow, authorize, getNamesUsingTestVideo, checkFolder, getSharingWindowUrl, changeVideoSharingSettings, checkVideoSharingProperties } = libs;
 
 const log = require('simple-node-logger').createSimpleFileLogger('project.log');
 
 const config = require('./config.js');
-const { URL_GOOGLE_ACCOUNTS, URL_YOUTUBE_STUDIO_VIDEO, URL_GOOGLE_CONTACTS, GOOGLE_USER, GOOGLE_PASSWORD, USERS_TO_SHARE, USERS_TO_REMOVE, LOGGING_MODE } = config;
+const { URL_GOOGLE_ACCOUNTS, URL_YOUTUBE_STUDIO_VIDEO, URL_YOUTUBE_STUDIO_TEST_VIDEO, GOOGLE_USER, GOOGLE_PASSWORD, USERS_TO_SHARE, USERS_TO_REMOVE, LOGGING_MODE, SHARE_ONLY_WITH_LISTED } = config;
 
-const USERS_TO_SHARE_ARRAY  = USERS_TO_SHARE.split(',');
-const USERS_TO_REMOVE_ARRAY = USERS_TO_REMOVE.split(',');
+const USERS_TO_SHARE_ARRAY  = USERS_TO_SHARE!==''? USERS_TO_SHARE.split(','): [];
+const USERS_TO_REMOVE_ARRAY = USERS_TO_REMOVE!==''? USERS_TO_REMOVE.split(','): [];
 
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteer.use(StealthPlugin());
@@ -26,15 +26,13 @@ const dataDir = path.resolve(__dirname, 'tmp');
 puppeteer.launch({ headless: true, product: 'chrome', userDataDir: dataDir}).then(async browser => {
 
   const page = await browser.newPage();
+  let sharingWindowUrl = '';
 
   log.info('Create browser');
 
   await page.setViewport({ width: 1280, height: 800 })
 
   await page.setBypassCSP(true);
-
-  const ALL_EMAILS = [...USERS_TO_SHARE_ARRAY, ...USERS_TO_REMOVE_ARRAY];
-  let usersToNames = await getNamesFromContactList(page, log, ALL_EMAILS, URL_GOOGLE_CONTACTS, LOGGING_MODE);
 
   await page.goto(URL_YOUTUBE_STUDIO_VIDEO);
 
@@ -50,54 +48,73 @@ puppeteer.launch({ headless: true, product: 'chrome', userDataDir: dataDir}).the
     await authorize(page, log, GOOGLE_USER, GOOGLE_PASSWORD);
   }
 
-  await openSharingVideoWindow(browser, page, log, URL_YOUTUBE_STUDIO_VIDEO);
+  let usersToNames = {}, ALL_EMAILS = [];
 
-  await page.waitForSelector('textarea.metadata-share-contacts');
+  if (SHARE_ONLY_WITH_LISTED !== 'YES' || USERS_TO_SHARE_ARRAY !== []) {
+    log.info('Getting sharing page URL');
 
-  log.info(`Typing new users (${USERS_TO_SHARE_ARRAY.length})...`);
+    sharingWindowUrl = await getSharingWindowUrl(browser, page, log, URL_YOUTUBE_STUDIO_TEST_VIDEO);
 
-  for (let i = 0; i < USERS_TO_SHARE_ARRAY.length; i++) {
-    await page.type('textarea.metadata-share-contacts', USERS_TO_SHARE_ARRAY[i] + ',', {delay: 20});
+    log.info(`Sharing page URL is ${sharingWindowUrl}`);
+
+    log.info(`Getting names associated with e-mails`);
+
+    ALL_EMAILS = [...USERS_TO_SHARE_ARRAY, ...USERS_TO_REMOVE_ARRAY];
+    usersToNames = await getNamesUsingTestVideo(browser, page, log, ALL_EMAILS, URL_YOUTUBE_STUDIO_TEST_VIDEO, sharingWindowUrl);
+
+    log.info(`Got names associated with e-mails (${Object.keys(usersToNames).length})`);
+
+    // let usersToNames = { 'pavel@jobberwocky.io': 'Pavel Filippov',
+    // 'zan369@gmail.com': 'zan369@gmail.com',
+    // 'zanziver@gmail.com': 'Pavel Filippov',
+    // 'pavel.filippov.home@gmail.com': 'pavel.filippov.home@gmail.com' };
   }
 
-  log.info(`Removing users (${USERS_TO_REMOVE_ARRAY.length})...`);
+  log.info('Getting sharing page URL');
 
-  for (let i = 0; i < USERS_TO_REMOVE_ARRAY.length; i++) {
-    const email = USERS_TO_REMOVE_ARRAY[i];
-    const checkString = usersToNames[email] || email;
+  sharingWindowUrl = await getSharingWindowUrl(browser, page, log, URL_YOUTUBE_STUDIO_VIDEO);
 
-    try {
-      await page.click(`button[aria-label^="Delete ${checkString}"]`);
-      log.info(`User ${checkString} was successfully removed`);
-    }
-    catch (ex) {
-      log.info(`No user ${checkString} to remove`);
-    }
+  log.info(`Sharing page URL is ${sharingWindowUrl}`);
 
-    await page.waitFor(1000);
+  await changeVideoSharingSettings(browser, page, log, sharingWindowUrl, USERS_TO_SHARE_ARRAY, USERS_TO_REMOVE_ARRAY, false, usersToNames, SHARE_ONLY_WITH_LISTED);
+
+  // await openSharingVideoWindow(browser, page, log, URL_YOUTUBE_STUDIO_VIDEO);
+  //
+  // await page.waitForSelector('textarea.metadata-share-contacts');
+  //
+  // log.info(`Typing new users (${USERS_TO_SHARE_ARRAY.length})...`);
+  //
+  // for (let i = 0; i < USERS_TO_SHARE_ARRAY.length; i++) {
+  //   await page.type('textarea.metadata-share-contacts', USERS_TO_SHARE_ARRAY[i] + ',', {delay: 20});
+  // }
+
+  // log.info(`Removing users (${USERS_TO_REMOVE_ARRAY.length})...`);
+  //
+  // for (let i = 0; i < USERS_TO_REMOVE_ARRAY.length; i++) {
+  //   const email = USERS_TO_REMOVE_ARRAY[i];
+  //   const checkString = usersToNames[email] || email;
+  //
+  //   try {
+  //     await page.click(`button[aria-label^="Delete ${checkString}"]`);
+  //     log.info(`User ${checkString} was successfully removed`);
+  //   }
+  //   catch (ex) {
+  //     log.info(`No user ${checkString} to remove`);
+  //   }
+  //
+  //   await page.waitFor(1000);
+  // }
+  //
+  // await page.click('button.sharing-dialog-ok');
+  // await page.waitFor(3000);
+
+  if (ALL_EMAILS && ALL_EMAILS.length > 0) {
+    log.info('Testing if video was shared properly');
+
+    await checkVideoSharingProperties(browser, page, log, sharingWindowUrl, ALL_EMAILS, usersToNames);
   }
 
-  await page.click('button.sharing-dialog-ok');
-  await page.waitFor(3000);
-
-  log.info('Video was shared, now testing');
-
-  await openSharingVideoWindow(browser, page, log, URL_YOUTUBE_STUDIO_VIDEO);
-  await page.waitForSelector('div.acl-target-list-inner-container');
-
-  for (let i = 0; i < ALL_EMAILS.length; i++) {
-    let email = ALL_EMAILS[i];
-    const checkString = usersToNames[email] || email;
-    try {
-      await page.waitForSelector(`div[title="${checkString}"]`, { timeout: 300 });
-      log.info(`Video is shared with ${checkString} <${email}>`);
-    }
-    catch (ex) {
-      log.info(`Video is not shared with ${checkString} <${email}>`);
-    }
-  };
-
- log.info('Closing session');
- await browser.close();
+  log.info('Closing session');
+  await browser.close();
 
 });
