@@ -87,11 +87,16 @@ async function getNamesUsingTestVideo (browser, page, log, emails, videoUrl, sha
     let emailName;
     if (email!=='') {
 
+      log.info(`Getting name for the e-mail ${emails[i]}`);
+
       await changeVideoSharingSettings(browser, page, log, sharingWindowUrl, [emails[i]], [], true, {});
+
+      log.info(`Test video is shared with ${emails[i]}`);
 
       await page.goto(sharingWindowUrl);
 
-      log.info('Opening test video for ' + email);
+      log.info(`Looking for the name for the ${email} in the sharing properties of the test video`);
+
       try {
         emailName = await page.$eval('div.acl-target-item', el => el.innerText);
       }
@@ -102,6 +107,7 @@ async function getNamesUsingTestVideo (browser, page, log, emails, videoUrl, sha
       } else {
         log.info(`There is no name for the ${email}`);
       }
+
     }
   }
 
@@ -126,6 +132,10 @@ async function changeVideoSharingSettings (browser, page, log, sharingWindowUrl,
     const elements = await page.$x('//span[@class="yt-uix-button-content" and text()="Remove all"]')
     if (elements && elements[0]) {
       await elements[0].click();
+      log.info('All users were removed');
+    }
+    else {
+      log.error('No link, cannot remove');
     }
   }
 
@@ -152,8 +162,10 @@ async function changeVideoSharingSettings (browser, page, log, sharingWindowUrl,
 
   await page.waitFor(600);
 
+  log.info(`Clicking on ok button to save`);
+
   await page.click('button.sharing-dialog-ok');
-  await page.waitFor(3000);
+  await page.waitFor(6000);
 
   log.info('Video sharing properties were changed');
 
