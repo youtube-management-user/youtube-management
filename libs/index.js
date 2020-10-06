@@ -122,6 +122,7 @@ async function changeVideoSharingSettings (browser, page, log, sharingWindowUrl,
   }
 
   await page.goto(sharingWindowUrl);
+  await page.bringToFront();
 
   log.info('Opening video sharing page');
 
@@ -162,9 +163,15 @@ async function changeVideoSharingSettings (browser, page, log, sharingWindowUrl,
 
   await page.waitFor(600);
 
-  log.info(`Clicking on ok button to save`);
+  try {
+    await page.waitForSelector("button.sharing-dialog-ok:not([disabled])", { timeout: 3000 });
+    await page.click('button.sharing-dialog-ok');
+    log.info(`Clicking on ok button to save`);
+  } catch(ex) {
+    await page.click('button.sharing-dialog-cancel');
+    log.info(`OK button is disabled, clicking on cancel`);
+  }
 
-  await page.click('button.sharing-dialog-ok');
   await page.waitFor(6000);
 
   log.info('Video sharing properties were changed');
